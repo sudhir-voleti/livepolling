@@ -3,21 +3,13 @@ import requests
 import pandas as pd
 import time
 
-# ================== SECRETS (Safe) ==================
-#SUPABASE_URL = st.secrets["SUPABASE_URL"]
-#SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
-SUPABASE_URL = "https://wkzhfntozbnxibjhrnld.supabase.co"
-SUPABASE_KEY = "sb_publishable_ov70pw19lK7p7ihZm0xEyg_acLkNiiy"
+# ================== CONFIG (Hardcoded for now - change to secrets later if desired) ==================
+SUPABASE_URL = "https://your-project.supabase.co"   # ← Replace with yours
+SUPABASE_KEY = "your-anon-or-publishable-key"       # ← Replace with yours
 TABLE = "votes"
-# ===========================================================
 
-# DEBUG - REMOVE AFTER FIXING
-with st.sidebar:
-    st.header("🔧 Debug (Delete Later)")
-    st.write("URL:", SUPABASE_URL)
-    st.write("Key preview:", SUPABASE_KEY[:15] + "..." if SUPABASE_KEY else "MISSING")
-    st.write("Password set:", bool(INSTRUCTOR_PASSWORD))
-    
+# ==============================================================================================
+
 headers = {
     "apikey": SUPABASE_KEY,
     "Authorization": f"Bearer {SUPABASE_KEY}",
@@ -28,7 +20,7 @@ headers = {
 st.set_page_config(page_title="Classroom Activities", layout="wide")
 st.title("🔥 Live Classroom Activities")
 
-# Initialize session state
+# Initialize session state for duplicate prevention
 if "submitted" not in st.session_state:
     st.session_state.submitted = False
 
@@ -40,11 +32,12 @@ mode_options = [
 ]
 mode = st.selectbox("Select Current Activity:", mode_options, index=0)
 
+# Generate poll_id from selection
 poll_id = mode.lower().replace(" ", "_").replace(":", "").replace(".", "").replace("(coming_soon)", "ab_vote")
 
-st.markdown(f"**Activity ID:** `{poll_id}`")
+st.markdown(f"**Current Activity:** `{poll_id}`")
 
-# Activity Config
+# Activity configurations
 configs = {
     "1_mcq_segment_attractiveness": {
         "question": "Which customer segment is most attractive for Spotify Ultra Premium launch?",
@@ -60,8 +53,12 @@ configs = {
         "question": "What do you think of the AI-generated personas? Strengths? Improvements? Surprises?",
         "options": None,
         "type": "text"
+    },
+    "3_ab_vote": {
+        "question": "Which ad variant do you prefer?",
+        "options": ["Ad A", "Ad B"],
+        "type": "mcq"
     }
-    # Add more activities here later
 }
 
 config = configs.get(poll_id, configs["1_mcq_segment_attractiveness"])
@@ -73,14 +70,14 @@ if config["type"] == "mcq":
     cols = st.columns(2)
     for i, opt in enumerate(config["options"]):
         with cols[i % 2]:
-            st.write(f"**{opt.split(':')[0]}** {opt.split(':')[1] if ':' in opt else ''}")
+            st.write(f"**{opt}**")
 
-# Student Identification
+# Student identification (required)
 st.divider()
 st.subheader("Your Identity")
-student_name = st.text_input("Enter your Name or Student ID (required):", key="name_input")
+student_name = st.text_input("Enter your Name or Student ID (required):")
 
-# Submission Form
+# Submission
 st.divider()
 st.header("Submit Your Response")
 
@@ -110,7 +107,7 @@ if st.button("Submit Response", type="primary"):
             st.session_state.submitted = True
             st.rerun()
         else:
-            st.error("Submission failed. Try again.")
+            st.error("Submission failed. Check connection or keys.")
 
 # Live Results
 st.divider()
@@ -120,10 +117,7 @@ placeholder = st.empty()
 auto_refresh = st.checkbox("Auto-refresh every 5 seconds", value=True)
 
 while True:
-    resp = requests.get(
-        f"{SUPABASE_URL}/rest/v1/{TABLE}?poll_id=eq.{poll_id}",
-        headers=headers
-    )
+    resp = requests.get(f"{SUPABASE_URL}/rest/v1/{TABLE}?poll_id=eq.{poll_id}", headers=headers)
     if resp.status_code == 200:
         votes = resp.json()
         if votes:
@@ -138,22 +132,11 @@ while True:
                 st.dataframe(display_df, use_container_width=True)
         else:
             with placeholder.container():
-                st.info("No responses yet.")
+                st.info("No responses yet — waiting for the class!")
+    else:
+        with placeholder.container():
+            st.error(f"Supabase error {resp.status_code} — check keys/URL/table")
     if not auto_refresh:
         break
     time.sleep(5)
     st.rerun()
-
-# Instructor Controls
-st.divider()
-with st.expander("👩‍🏫 Instructor Controls"):
-    pw = st.text_input("Password", type="password")
-    if pw == st.secrets["INSTRUCTOR_PASSWORD"]:
-        st.success("Access granted")
-        if st.button("🗑️ Reset This Activity (Clear All Data)"):
-            requests.delete(f"{SUPABASE_URL}/rest/v1/{TABLE}?poll_id=eq.{poll_id}", headers=headers)
-            st.success("Activity cleared!")
-            st.session_state.submitted = False
-            st.rerun()
-    elif pw:
-        st.error("Wrong password")
