@@ -4,8 +4,10 @@ import pandas as pd
 import time
 
 # ================== SECRETS (Safe) ==================
-SUPABASE_URL = st.secrets["SUPABASE_URL"]
-SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
+#SUPABASE_URL = st.secrets["SUPABASE_URL"]
+#SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
+SUPABASE_URL = "https://wkzhfntozbnxibjhrnld.supabase.co"
+SUPABASE_KEY = "sb_publishable_ov70pw19lK7p7ihZm0xEyg_acLkNiiy"
 TABLE = "votes"
 # ===========================================================
 
