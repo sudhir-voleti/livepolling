@@ -3,12 +3,21 @@ import requests
 import pandas as pd
 import time
 
-# ================== HARDCODED CONFIG (Working Version) ==================
-SUPABASE_URL = "https://wkzhfntozbnxibjhrnld.supabase.co"
-SUPABASE_KEY = "sb_publishable_ov70pw19lK7p7ihZm0xEyg_acLkNiiy"
-TABLE = "votes"
+# ================== CONFIG ==================
+# Replace these with your Supabase details
+SUPABASE_URL = "https://wkzhfntozbnxibjhrnld.supabase.co"  # ← CHANGE
+SUPABASE_KEY = "sb_publishable_ov70pw19lK7p7ihZm0xEyg_acLkNiiy"              # ← CHANGE
 
-# ======================================================================
+TABLE = "votes"
+POLL_ID = "spotify_ad_test_round1"               # ← Change per poll/session
+
+# Options for this poll (edit as needed)
+OPTIONS = ["Option A", "Option B", "Option C"]   # 2–4 options work best
+
+# Instructor password for reveal/analysis
+INSTRUCTOR_PASSWORD = "secret2026"               # ← Change this!
+
+# ===========================================
 
 headers = {
     "apikey": SUPABASE_KEY,
@@ -17,52 +26,111 @@ headers = {
     "Prefer": "return=minimal"
 }
 
-st.set_page_config(page_title="Classroom Poll", layout="centered")
-st.title("Live Classroom Poll")
+st.set_page_config(page_title="Live Poll", layout="centered")
+st.title("🔥 Live Classroom Poll")
 
-# Activity dropdown
-activity = st.selectbox(
-    "Select Activity",
-    ["1. MCQ: Which segment is most attractive?", "2. Open Feedback on Personas"]
-)
+st.markdown(f"**Poll:** {POLL_ID.replace('_', ' ').title()}")
 
-# Generate poll_id from selection
-if "MCQ" in activity:
-    poll_id = "mcq_segment"
-    question = "Which customer segment is most attractive for Spotify Ultra Premium?"
-    options = ["A: Budget students", "B: Family sharers", "C: Audiophiles", "D: Casual listeners"]
-    is_mcq = True
-else:
-    poll_id = "feedback_personas"
-    question = "What do you think of the AI-generated personas? Strengths? Improvements?"
-    options = None
-    is_mcq = False
+# Display options with sample content (customize per use)
+cols = st.columns(len(OPTIONS))
+sample_content = {
+    "Option A": "🎧 **Upgrade now** – Hi-res audio + exclusive playlists for true music lovers.",
+    "Option B": "🎶 **Try Ultra Premium free for 1 month** – Better sound, no ads, offline downloads.",
+    "Option C": "🔥 **Limited time: 30% off first year** – For students and superfans only."
+}
 
-st.header(question)
+for i, opt in enumerate(OPTIONS):
+    with cols[i]:
+        st.subheader(opt)
+        st.write(sample_content.get(opt, "Great choice!"))
 
-# Display options for MCQ
-if is_mcq:
-    for opt in options:
-        st.write(f"**{opt}**")
-
-# Student name
+# Voting
 st.divider()
-student_name = st.text_input("Your Name or ID (required)")
+st.header("Cast Your Vote")
 
-# Response input
-if is_mcq:
-    choice = st.radio("Your choice", options)
-else:
-    choice = None
-    st.text_area("Your feedback", height=150, key="feedback_text")
+selected_option = st.radio("Choose one:", OPTIONS, horizontal=True)
+comment = st.text_area("Optional: Why did you choose this? (or any feedback)")
 
-comment = st.text_input("Optional additional comment")
-
-if st.button("Submit"):
-    if not student_name.strip():
-        st.error("Please enter your name/ID")
+if st.button("Submit Vote", type="primary"):
+    data = {
+        "poll_id": POLL_ID,
+        "option": selected_option,
+        "comment": comment if comment.strip() else None
+    }
+    response = requests.post(
+        f"{SUPABASE_URL}/rest/v1/{TABLE}",
+        headers=headers,
+        json=data
+    )
+    if response.status_code == 201:
+        st.success("Vote recorded! 🎉")
+        st.rerun()
     else:
-        data = {
-            "poll_id": poll_id,
-            "student_name": student_name.strip(),
-            "option": choice if is_mcq else "Open feedback
+        st.error("Error submitting vote. Try again.")
+
+# Live Results
+st.divider()
+st.header("📊 Live Results")
+
+placeholder = st.empty()
+auto_refresh = st.checkbox("Auto-refresh every 4 seconds", value=True)
+
+while True:
+    resp = requests.get(
+        f"{SUPABASE_URL}/rest/v1/{TABLE}?poll_id=eq.{POLL_ID}&select=option,comment",
+        headers=headers
+    )
+    if resp.status_code == 200:
+        votes = resp.json()
+        if votes:
+            df = pd.DataFrame(votes)
+            counts = df['option'].value_counts().reindex(OPTIONS, fill_value=0)
+            
+            with placeholder.container():
+                st.bar_chart(counts)
+                st.write(f"**Total votes:** {len(votes)}")
+                
+                # Show comments (latest 10)
+                if not df['comment'].dropna().empty:
+                    st.subheader("Recent Comments")
+                    recent_comments = df[['option', 'comment']].dropna(subset=['comment']).tail(10)
+                    st.dataframe(recent_comments, use_container_width=True)
+        else:
+            with placeholder.container():
+                st.info("No votes yet — be the first!")
+    
+    if not auto_refresh:
+        break
+    time.sleep(4)
+    st.rerun()
+
+# Instructor Section
+st.divider()
+with st.expander("👩‍🏫 Instructor Controls"):
+    password = st.text_input("Password", type="password")
+    if password == INSTRUCTOR_PASSWORD:
+        st.success("Access granted")
+        
+        if st.button("Clear All Votes (Reset Poll)"):
+            delete_resp = requests.delete(
+                f"{SUPABASE_URL}/rest/v1/{TABLE}?poll_id=eq.{POLL_ID}",
+                headers=headers
+            )
+            if delete_resp.status_code == 204:
+                st.success("All votes cleared!")
+                st.rerun()
+        
+        st.markdown("### Reveal Suggestions")
+        st.write("- Option A = AI-generated formal ad")
+        st.write("- Option B = Human-written emotional ad")
+        st.write("- Option C = Discount-focused ad")
+        
+        # Quick AI analysis of comments (using Gemini via st.text_input simulation)
+        if st.button("Summarize Comments with AI (paste into Gemini)"):
+            comments = [row['comment'] for row in votes if row['comment']]
+            if comments:
+                summary_prompt = "Summarize key themes from these student comments:\n" + "\n".join(comments)
+                st.code(summary_prompt, language="text")
+                st.info("Copy-paste this into Gemini/ChatGPT for instant summary!")
+    elif password:
+        st.error("Wrong password")
