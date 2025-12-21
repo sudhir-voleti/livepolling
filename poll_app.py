@@ -3,12 +3,20 @@ import requests
 import pandas as pd
 import time
 
-# ================== CONFIG ==================
-# Replace these with your Supabase details
-SUPABASE_URL = "https://wkzhfntozbnxibjhrnld.supabase.co"  # ← CHANGE
-SUPABASE_KEY = "sb_publishable_ov70pw19lK7p7ihZm0xEyg_acLkNiiy"              # ← CHANGE
+# ================== LOAD FROM SECRETS (Safe & Recommended) ==================
+SUPABASE_URL = st.secrets["SUPABASE_URL"]
+SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
 
 TABLE = "votes"
+# ===========================================================================
+
+headers = {
+    "apikey": SUPABASE_KEY,
+    "Authorization": f"Bearer {SUPABASE_KEY}",
+    "Content-Type": "application/json",
+    "Prefer": "return=minimal"
+}
+
 POLL_ID = "spotify_ad_test_round1"               # ← Change per poll/session
 
 # Options for this poll (edit as needed)
