@@ -7,9 +7,15 @@ import time
 SUPABASE_URL = st.secrets["SUPABASE_URL"]
 SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
 TABLE = "votes"
-
 # ===========================================================
 
+# DEBUG - REMOVE AFTER FIXING
+with st.sidebar:
+    st.header("🔧 Debug (Delete Later)")
+    st.write("URL:", SUPABASE_URL)
+    st.write("Key preview:", SUPABASE_KEY[:15] + "..." if SUPABASE_KEY else "MISSING")
+    st.write("Password set:", bool(INSTRUCTOR_PASSWORD))
+    
 headers = {
     "apikey": SUPABASE_KEY,
     "Authorization": f"Bearer {SUPABASE_KEY}",
