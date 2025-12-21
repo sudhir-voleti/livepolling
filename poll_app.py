@@ -4,8 +4,8 @@ import pandas as pd
 import time
 
 # ================== CONFIG (Hardcoded for now - change to secrets later if desired) ==================
-SUPABASE_URL = "https://your-project.supabase.co"   # ← Replace with yours
-SUPABASE_KEY = "your-anon-or-publishable-key"       # ← Replace with yours
+SUPABASE_URL = "https://wkzhfntozbnxibjhrnld.supabase.co"
+SUPABASE_KEY = "sb_publishable_ov70pw19lK7p7ihZm0xEyg_acLkNiiy"
 TABLE = "votes"
 
 # ==============================================================================================
