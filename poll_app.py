@@ -3,13 +3,10 @@ import requests
 import pandas as pd
 import time
 
-# ================== CONFIG - CHANGE THESE ==================
-# Use .streamlit/secrets.toml for real keys (see earlier instructions)
-SUPABASE_URL = "https://wkzhfntozbnxibjhrnld.supabase.co"  # ← CHANGE
-SUPABASE_KEY = "sb_publishable_ov70pw19lK7p7ihZm0xEyg_acLkNiiy"              # ← CHANGE
+# ================== SECRETS (Safe) ==================
+SUPABASE_URL = st.secrets["SUPABASE_URL"]
+SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
 TABLE = "votes"
-
-INSTRUCTOR_PASSWORD = "mysecret123"                # Change this!
 
 # ===========================================================
 
@@ -20,120 +17,135 @@ headers = {
     "Prefer": "return=minimal"
 }
 
-st.set_page_config(page_title="Live Classroom Activities", layout="wide")
+st.set_page_config(page_title="Classroom Activities", layout="wide")
 st.title("🔥 Live Classroom Activities")
 
-# Mode Selector (for multiple activities in one app)
+# Initialize session state
+if "submitted" not in st.session_state:
+    st.session_state.submitted = False
+
+# Activity Selector
 mode_options = [
     "1. MCQ: Segment Attractiveness",
-    "2. Open Feedback: Personas"
+    "2. Open Feedback: Personas",
+    "3. A/B Ad Vote (Coming Soon)"
 ]
-mode = st.selectbox("Select Activity:", mode_options)
+mode = st.selectbox("Select Current Activity:", mode_options, index=0)
 
-# Auto-generate poll_id from mode (keeps data separate)
-poll_id = mode.lower().replace(" ", "_").replace(":", "").replace(".", "")
+poll_id = mode.lower().replace(" ", "_").replace(":", "").replace(".", "").replace("(coming_soon)", "ab_vote")
 
-st.markdown(f"**Current Activity ID:** {poll_id}")
+st.markdown(f"**Activity ID:** `{poll_id}`")
 
-# Activity-Specific Config
-if "MCQ" in mode:
-    question = "Which customer segment is most attractive for Spotify Ultra Premium?"
-    options = [
-        "A: Budget-conscious students (price-sensitive, high volume)",
-        "B: Family sharers (value group plans, medium spend)",
-        "C: Audiophiles (willing to pay for hi-res, low volume)",
-        "D: Casual listeners (ad-tolerant, hard to convert)"
-    ]
-    show_options = True
-elif "Open Feedback" in mode:
-    question = "What do you think of the generated personas? Share your thoughts, suggestions, or improvements."
-    options = None  # No radio for open text
-    show_options = False
+# Activity Config
+configs = {
+    "1_mcq_segment_attractiveness": {
+        "question": "Which customer segment is most attractive for Spotify Ultra Premium launch?",
+        "options": [
+            "A: Budget-conscious students",
+            "B: Family plan sharers",
+            "C: Audiophiles / music superfans",
+            "D: Casual free-tier users"
+        ],
+        "type": "mcq"
+    },
+    "2_open_feedback_personas": {
+        "question": "What do you think of the AI-generated personas? Strengths? Improvements? Surprises?",
+        "options": None,
+        "type": "text"
+    }
+    # Add more activities here later
+}
 
-# Display Question
+config = configs.get(poll_id, configs["1_mcq_segment_attractiveness"])
+
 st.divider()
-st.header(question)
+st.header(config["question"])
 
-if show_options:
-    cols = st.columns(2)  # Display options in grid for better layout
-    for i, opt in enumerate(options):
+if config["type"] == "mcq":
+    cols = st.columns(2)
+    for i, opt in enumerate(config["options"]):
         with cols[i % 2]:
-            st.subheader(opt.split(":")[0])  # e.g., "A"
-            st.write(opt.split(":")[1])      # Description
+            st.write(f"**{opt.split(':')[0]}** {opt.split(':')[1] if ':' in opt else ''}")
 
-# Input Section
+# Student Identification
 st.divider()
-st.header("Your Response")
+st.subheader("Your Identity")
+student_name = st.text_input("Enter your Name or Student ID (required):", key="name_input")
 
-if show_options:
-    selected_option = st.radio("Choose one:", [opt.split(":")[0] for opt in options], horizontal=True)
+# Submission Form
+st.divider()
+st.header("Submit Your Response")
+
+if config["type"] == "mcq":
+    selected_option = st.radio("Your choice:", config["options"], horizontal=False)
 else:
-    selected_option = "Open Feedback"  # Dummy for text-only
+    selected_option = "Open Feedback"
+    st.info("Share your detailed thoughts below.")
 
-comment = st.text_area("Optional/Required Comment (share details here):")
+comment = st.text_area("Additional comments (optional for MCQ, encouraged for feedback):")
 
 if st.button("Submit Response", type="primary"):
-    data = {
-        "poll_id": poll_id,
-        "option": selected_option if show_options else "N/A",
-        "comment": comment if comment.strip() else None
-    }
-    response = requests.post(f"{SUPABASE_URL}/rest/v1/{TABLE}", headers=headers, json=data)
-    if response.status_code == 201:
-        st.success("Submitted! 🎉")
-        st.rerun()
+    if not student_name.strip():
+        st.error("Please enter your name or ID.")
+    elif st.session_state.submitted:
+        st.warning("You have already submitted for this activity. Thank you!")
     else:
-        st.error(f"Error: {response.status_code} – Check Supabase.")
+        data = {
+            "poll_id": poll_id,
+            "student_name": student_name.strip(),
+            "option": selected_option,
+            "comment": comment.strip() if comment.strip() else None
+        }
+        response = requests.post(f"{SUPABASE_URL}/rest/v1/{TABLE}", headers=headers, json=data)
+        if response.status_code == 201:
+            st.success(f"Thank you, {student_name}! Your response is recorded.")
+            st.session_state.submitted = True
+            st.rerun()
+        else:
+            st.error("Submission failed. Try again.")
 
 # Live Results
 st.divider()
 st.header("📊 Live Results")
 
 placeholder = st.empty()
-auto_refresh = st.checkbox("Auto-refresh every 4 seconds", value=True)
+auto_refresh = st.checkbox("Auto-refresh every 5 seconds", value=True)
 
 while True:
     resp = requests.get(
-        f"{SUPABASE_URL}/rest/v1/{TABLE}?poll_id=eq.{poll_id}&select=option,comment",
+        f"{SUPABASE_URL}/rest/v1/{TABLE}?poll_id=eq.{poll_id}",
         headers=headers
     )
     if resp.status_code == 200:
         votes = resp.json()
         if votes:
             df = pd.DataFrame(votes)
-            if show_options:
-                counts = df['option'].value_counts()
-                with placeholder.container():
+            with placeholder.container():
+                if config["type"] == "mcq":
+                    counts = df['option'].value_counts()
                     st.bar_chart(counts)
-                    st.write(f"**Total responses:** {len(votes)}")
-            else:
-                with placeholder.container():
-                    st.write(f"**Total responses:** {len(votes)}")
-                    st.subheader("Collected Feedback")
-                    feedback_df = df[['comment']].dropna().reset_index(drop=True)
-                    st.dataframe(feedback_df, use_container_width=True)
+                st.write(f"**Total responses: {len(df)}**")
+                st.subheader("Individual Responses")
+                display_df = df[['student_name', 'option', 'comment']].sort_values("student_name")
+                st.dataframe(display_df, use_container_width=True)
         else:
             with placeholder.container():
-                st.info("Waiting for first response...")
+                st.info("No responses yet.")
     if not auto_refresh:
         break
-    time.sleep(4)
+    time.sleep(5)
     st.rerun()
 
-# Instructor Tools
+# Instructor Controls
 st.divider()
-with st.expander("👩‍🏫 Instructor Only"):
+with st.expander("👩‍🏫 Instructor Controls"):
     pw = st.text_input("Password", type="password")
-    if pw == INSTRUCTOR_PASSWORD:
-        st.success("Authenticated")
-        if st.button("🗑️ Clear Responses for This Activity"):
-            del_resp = requests.delete(
-                f"{SUPABASE_URL}/rest/v1/{TABLE}?poll_id=eq.{poll_id}",
-                headers=headers
-            )
-            if del_resp.status_code == 204:
-                st.success("Activity reset!")
-                st.rerun()
-        st.markdown("**Reveal/Notes:** Edit as needed for each activity.")
+    if pw == st.secrets["INSTRUCTOR_PASSWORD"]:
+        st.success("Access granted")
+        if st.button("🗑️ Reset This Activity (Clear All Data)"):
+            requests.delete(f"{SUPABASE_URL}/rest/v1/{TABLE}?poll_id=eq.{poll_id}", headers=headers)
+            st.success("Activity cleared!")
+            st.session_state.submitted = False
+            st.rerun()
     elif pw:
-        st.error("Incorrect password")
+        st.error("Wrong password")
