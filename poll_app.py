@@ -109,29 +109,31 @@ if st.session_state.unlocked:
         
         if resp.status_code == 200 and resp.json():
             df = pd.DataFrame(resp.json())
-            counts = df['option'].value_counts().reset_index()
-            counts.columns = ['Option', 'Votes']
             
-            # Interactive Chart Toggle
+            # --- CRITICAL FIX START ---
+            # 1. Count what we have
+            counts = df['option'].value_counts()
+            
+            # 2. Reindex to ensure ALL options from your config are present (even at 0)
+            full_counts = counts.reindex(current_act['options'], fill_value=0).reset_index()
+            full_counts.columns = ['Option', 'Votes']
+            # --- CRITICAL FIX END ---
+            
             chart_choice = st.radio("Toggle View:", ["Pie Chart", "Bar Chart"], horizontal=True)
             
             if chart_choice == "Pie Chart":
-                fig = px.pie(counts, values='Votes', names='Option', hole=0.4, 
+                fig = px.pie(full_counts, values='Votes', names='Option', hole=0.4, 
                              color_discrete_sequence=px.colors.qualitative.Prism)
             else:
-                fig = px.bar(counts, x='Votes', y='Option', orientation='h', color='Option',
+                fig = px.bar(full_counts, x='Votes', y='Option', orientation='h', color='Option',
                              text_auto=True, color_discrete_sequence=px.colors.qualitative.Prism)
-                fig.update_layout(yaxis={'categoryorder':'total ascending'})
+                # Ensure the Y-axis (Options) matches your defined order
+                fig.update_layout(yaxis={'categoryorder':'array', 'categoryarray':current_act['options']})
 
             st.plotly_chart(fig, use_container_width=True)
             
-            # Comments display
             if not df.dropna(subset=['comment']).empty:
                 st.write("**Student Commentary:**")
                 st.dataframe(df[['student_name', 'option', 'comment']].dropna(subset=['comment']), use_container_width=True)
         else:
             st.info("No votes yet. Waiting for students...")
-
-    show_results()
-else:
-    st.info("Results are locked. They will be displayed once the debate concludes.")
