@@ -4,112 +4,104 @@ import pandas as pd
 import time
 
 # ==========================================
-# 1. HARDCODED KEYS (Keep these here for now)
+# 1. SETUP & CONFIG (Hardcoded for now)
 # ==========================================
 SUPABASE_URL = "https://wkzhfntozbnxibjhrnld.supabase.co"
 SUPABASE_KEY = "sb_publishable_ov70pw19lK7p7ihZm0xEyg_acLkNiiy"
 INSTRUCTOR_PASSWORD = "Aitp@2026"
 
-# ==========================================
-# 2. LECTURE CONTENT (Edit this block each class)
-# ==========================================
-POLL_CONFIG = {
-    "poll_id": "lecture_02_ethics",        # CHANGE THIS for every new poll
-    "title": "AI Ethics: Self-Driving Cars",
-    "options": {
-        "Option A": "Prioritize Passenger",
-        "Option B": "Prioritize Pedestrian",
-        "Option C": "Random/Neutral"
+# Define all activities for today's lecture here
+LECTURE_DATA = {
+    "Activity 1: Ethics": {
+        "id": "lec1_act1",
+        "options": ["Option A", "Option B"],
+        "content": "Is AI tracking ethical?"
     },
-    "descriptions": {
-        "Option A": "The car protects the owner at all costs.",
-        "Option B": "The car minimizes total loss of life.",
-        "Option C": "The car follows a pre-set legal lottery."
+    "Activity 2: Pricing": {
+        "id": "lec1_act2",
+        "options": ["High", "Low", "Freemium"],
+        "content": "What is the best pricing strategy?"
     }
 }
 
-# ==========================================
-# 3. APP LOGIC
-# ==========================================
 headers = {
     "apikey": SUPABASE_KEY,
     "Authorization": f"Bearer {SUPABASE_KEY}",
     "Content-Type": "application/json"
 }
 
-st.set_page_config(page_title="Live Poll", layout="centered")
-st.title(f"🔥 {POLL_CONFIG['title']}")
+st.set_page_config(page_title="Classroom Poll", layout="wide")
 
-# --- VOTING SECTION ---
-cols = st.columns(len(POLL_CONFIG['options']))
-options_list = list(POLL_CONFIG['options'].keys())
+# ==========================================
+# 2. ACTIVITY SELECTOR (Top Bar)
+# ==========================================
+st.title("🎓 Live Lecture Interactive")
+selected_act_name = st.selectbox("Select Current Activity:", list(LECTURE_DATA.keys()))
+current_act = LECTURE_DATA[selected_act_name]
 
-for i, opt in enumerate(options_list):
-    with cols[i]:
-        st.subheader(opt)
-        st.info(POLL_CONFIG['descriptions'].get(opt, ""))
+# ==========================================
+# 3. VOTING UI
+# ==========================================
+with st.container(border=True):
+    st.header(selected_act_name)
+    st.write(current_act["content"])
+    
+    col1, col2 = st.columns([1, 2])
+    with col1:
+        moniker = st.text_input("Name/Moniker", key=f"name_{current_act['id']}")
+    with col2:
+        choice = st.radio("Your Choice:", current_act["options"], horizontal=True, key=f"radio_{current_act['id']}")
+    
+    comment = st.text_input("Comment (Optional)", key=f"comm_{current_act['id']}")
 
+    if st.button("Submit Vote", type="primary", key=f"btn_{current_act['id']}"):
+        if not moniker:
+            st.error("Please enter a moniker!")
+        else:
+            payload = {
+                "poll_id": current_act["id"],
+                "option": choice,
+                "comment": comment,
+                "student_name": moniker
+            }
+            resp = requests.post(f"{SUPABASE_URL}/rest/v1/votes", headers=headers, json=payload)
+            if resp.status_code in [200, 201]:
+                st.success("Vote cast! Wait for the instructor to reveal results.")
+
+# ==========================================
+# 4. INSTRUCTOR CONTROL & RESULTS
+# ==========================================
 st.divider()
 
-# NEW: Moniker and Vote Layout
-c1, c2 = st.columns([1, 2])
-with c1:
-    moniker = st.text_input("Your Moniker/Name", placeholder="e.g. Anonymous Tiger")
-with c2:
-    choice = st.radio("Cast your vote:", options_list, horizontal=True)
+# We use session_state to keep the results "Unlocked" once the password is correct
+if 'results_unlocked' not in st.session_state:
+    st.session_state.results_unlocked = False
 
-user_comment = st.text_input("Optional: Why did you choose this?")
-
-if st.button("Submit Vote", type="primary"):
-    if not moniker:
-        st.error("Please enter a moniker (name) to vote!")
-    else:
-        payload = {
-            "poll_id": POLL_CONFIG['poll_id'],
-            "option": choice,
-            "comment": user_comment.strip() if user_comment else None,
-            "student_name": moniker.strip() # Matches your DB column
-        }
-        resp = requests.post(f"{SUPABASE_URL}/rest/v1/votes", 
-                             headers={**headers, "Prefer": "return=minimal"}, 
-                             json=payload)
-        if resp.status_code in [200, 201]:
-            st.success(f"Vote recorded, {moniker}! 🎉")
-            time.sleep(1)
+with st.expander("👩‍🏫 Instructor: Reveal Results"):
+    pwd = st.text_input("Instructor Password", type="password")
+    if pwd == INSTRUCTOR_PASSWORD:
+        if st.button("🔓 SHOW RESULTS TO CLASS"):
+            st.session_state.results_unlocked = True
+        if st.button("🔒 HIDE RESULTS"):
+            st.session_state.results_unlocked = False
+        
+        if st.button("🗑️ Reset Current Activity"):
+            requests.delete(f"{SUPABASE_URL}/rest/v1/votes?poll_id=eq.{current_act['id']}", headers=headers)
             st.rerun()
-        else:
-            st.error(f"Error: {resp.text}")
 
-# --- RESULTS SECTION ---
-@st.fragment(run_every=5)
-def live_results():
-    st.divider()
-    st.header("📊 Live Results")
-    # Fetch only for this specific poll
-    resp = requests.get(f"{SUPABASE_URL}/rest/v1/votes?poll_id=eq.{POLL_CONFIG['poll_id']}&select=option,comment,student_name", headers=headers)
+# --- THE CONDITIONAL RESULTS SECTION ---
+if st.session_state.results_unlocked:
+    @st.fragment(run_every=5)
+    def show_live_data():
+        st.subheader(f"📊 Live Results: {selected_act_name}")
+        resp = requests.get(f"{SUPABASE_URL}/rest/v1/votes?poll_id=eq.{current_act['id']}&select=*", headers=headers)
+        if resp.status_code == 200 and resp.json():
+            df = pd.DataFrame(resp.json())
+            st.bar_chart(df['option'].value_counts())
+            st.dataframe(df[['student_name', 'option', 'comment']], use_container_width=True)
+        else:
+            st.write("No data yet.")
     
-    if resp.status_code == 200:
-        data = resp.json()
-        if data:
-            df = pd.DataFrame(data)
-            counts = df['option'].value_counts().reindex(options_list, fill_value=0)
-            st.bar_chart(counts)
-            
-            # Show comments with the new monikers
-            comments = df.dropna(subset=['comment']).tail(5)
-            if not comments.empty:
-                st.write("**Recent Feedback:**")
-                # Showing Name, Option, and Comment
-                st.table(comments[['student_name', 'option', 'comment']])
-        else:
-            st.info("Waiting for the first vote...")
-
-live_results()
-
-# --- INSTRUCTOR SECTION ---
-with st.expander("👩‍🏫 Instructor Panel"):
-    p = st.text_input("Admin Password", type="password")
-    if p == INSTRUCTOR_PASSWORD:
-        if st.button("Reset THIS Poll"):
-            requests.delete(f"{SUPABASE_URL}/rest/v1/votes?poll_id=eq.{POLL_CONFIG['poll_id']}", headers=headers)
-            st.rerun()
+    show_live_data()
+else:
+    st.info("Results are currently hidden by the instructor. Cast your vote and wait!")
