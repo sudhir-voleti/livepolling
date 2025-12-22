@@ -26,7 +26,12 @@ LECTURE_DATA = {
         "id": "spotify_ai_q3",
         "options": ["Full Permission", "Artist Opt-In Only", "Revenue-Share Model", "Ban AI Tools"],
         "content": "How should Spotify deploy AI Remix tools to maximize engagement while protecting artist trust?"
-    }
+    },
+    "Poll 4: Final Recommendation (Evidence-Based)": {
+    "id": "spotify_strat_final",
+    "options": ["Superfan Elite ($19.99)", "Mass Utility Add-on", "The Two-Tier Hybrid"],
+    "content": "After the NLM VoC analysis: Which strategy are you now recommending to Sarah Jenkins?"
+}
 }
 
 headers = {"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}", "Content-Type": "application/json"}
