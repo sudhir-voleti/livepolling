@@ -105,35 +105,44 @@ if st.session_state.unlocked:
     @st.fragment(run_every=5)
     def show_results():
         st.subheader(f"📊 Live Data: {selected_act_name}")
+        
+        # Debug Info (Visible only to you when revealed)
+        # st.write(f"DEBUG: Looking for ID: {current_act['id']}") 
+        
         resp = requests.get(f"{SUPABASE_URL}/rest/v1/votes?poll_id=eq.{current_act['id']}&select=*", headers=headers)
         
-        if resp.status_code == 200 and resp.json():
-            df = pd.DataFrame(resp.json())
-            
-            # --- CRITICAL FIX START ---
-            # 1. Count what we have
-            counts = df['option'].value_counts()
-            
-            # 2. Reindex to ensure ALL options from your config are present (even at 0)
-            full_counts = counts.reindex(current_act['options'], fill_value=0).reset_index()
-            full_counts.columns = ['Option', 'Votes']
-            # --- CRITICAL FIX END ---
-            
-            chart_choice = st.radio("Toggle View:", ["Pie Chart", "Bar Chart"], horizontal=True)
-            
-            if chart_choice == "Pie Chart":
-                fig = px.pie(full_counts, values='Votes', names='Option', hole=0.4, 
-                             color_discrete_sequence=px.colors.qualitative.Prism)
-            else:
-                fig = px.bar(full_counts, x='Votes', y='Option', orientation='h', color='Option',
-                             text_auto=True, color_discrete_sequence=px.colors.qualitative.Prism)
-                # Ensure the Y-axis (Options) matches your defined order
-                fig.update_layout(yaxis={'categoryorder':'array', 'categoryarray':current_act['options']})
+        if resp.status_code == 200:
+            raw_data = resp.json()
+            if raw_data:
+                df = pd.DataFrame(raw_data)
+                
+                # Force alignment with defined options
+                counts = df['option'].value_counts()
+                full_counts = counts.reindex(current_act['options'], fill_value=0).reset_index()
+                full_counts.columns = ['Option', 'Votes']
+                
+                chart_choice = st.radio("Toggle View:", ["Pie Chart", "Bar Chart"], horizontal=True, key="chart_toggle")
+                
+                if chart_choice == "Pie Chart":
+                    fig = px.pie(full_counts, values='Votes', names='Option', hole=0.4, 
+                                 color_discrete_sequence=px.colors.qualitative.Prism)
+                else:
+                    fig = px.bar(full_counts, x='Votes', y='Option', orientation='h', color='Option',
+                                 text_auto=True, color_discrete_sequence=px.colors.qualitative.Prism)
+                    fig.update_layout(yaxis={'categoryorder':'array', 'categoryarray':current_act['options']})
 
-            st.plotly_chart(fig, use_container_width=True)
-            
-            if not df.dropna(subset=['comment']).empty:
-                st.write("**Student Commentary:**")
-                st.dataframe(df[['student_name', 'option', 'comment']].dropna(subset=['comment']), use_container_width=True)
+                st.plotly_chart(fig, use_container_width=True)
+                
+                # Show Comments
+                comment_df = df.dropna(subset=['comment'])
+                if not comment_df.empty:
+                    st.write("**Student Commentary:**")
+                    st.dataframe(comment_df[['student_name', 'option', 'comment']], use_container_width=True)
+            else:
+                # This is the "Empty" state
+                st.warning(f"No records found in database for ID: {current_act['id']}. Did you select the correct activity in the dropdown?")
         else:
-            st.info("No votes yet. Waiting for students...")
+            st.error(f"Supabase Error: {resp.status_code} - {resp.text}")
+
+    show_results()
+    
