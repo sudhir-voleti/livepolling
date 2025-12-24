@@ -5,142 +5,157 @@ import time
 import plotly.express as px
 
 # ==========================================
-# 0. SETUP & CONFIG (Logic Engine)
+# 0. CORE CONFIGURATION
 # ==========================================
 SUPABASE_URL = "https://wkzhfntozbnxibjhrnld.supabase.co"
-SUPABASE_KEY = "sb_publishable_ov70pw19lK7p7ihZm0xEyg_acLkNiiy"
+SUPABASE_KEY = "sb_publishable_ov70pw19lK7p7ihZm0xEyg_acLkNiiy" # Replace with your secret key if this is public
 INSTRUCTOR_PASSWORD = "Aitp@2026"
-headers = {"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}", "Content-Type": "application/json"}
+
+# GLOBAL SETTINGS - Update these per session
+CURRENT_LECTURE_ID = "LEC02"  # Change this to 'EXEC_01' etc. for different courses
+
+headers = {
+    "apikey": SUPABASE_KEY,
+    "Authorization": f"Bearer {SUPABASE_KEY}",
+    "Content-Type": "application/json"
+}
 
 # ==========================================
-# 1. LECTURE CONTENT (JSON-Style Config)
+# 1. LECTURE CONTENT (The JSON Engine)
 # ==========================================
 LECTURE_CONTENT = {
-    "Pulse Check: Strategic Risks": {
-        "id": "spotify_risk_q1",
+    "Concept Check: Product-Service": {
+        "id": "q1_spectrum",
         "type": "SINGLE",
-        "content": "Whose internal perspective currently poses the most significant strategic risk to Spotify?",
-        "options": ["Debra (Superfans)", "David (Mass Volume)", "Marcus (Artist Safety)", "Other"],
-        "correct": None
+        "content": "Where does a SaaS subscription (like Oracle) fall on the Product-Service spectrum?",
+        "options": ["Pure Good", "Pure Service", "More Good than Service", "More Service than Good"],
+        "correct": "More Service than Good"
     },
-    "Feature Pillar Selection": {
-        "id": "spotify_multi_q2",
+    "Strategic Pillars: Select All": {
+        "id": "q2_pillars",
         "type": "MULTI",
-        "content": "Select ALL features you believe are 'Non-Negotiable' for a $20 tier:",
-        "options": ["Lossless Audio", "AI Remixing", "Ticket Access", "Exclusive Content"],
-        "correct": ["Lossless Audio", "Ticket Access"]
+        "content": "Select ALL features that justify a $19.99 Super-Premium price point:",
+        "options": ["Lossless Audio", "AI Remixing", "Concert Presale", "Hardware Discounts"],
+        "correct": ["Lossless Audio", "Concert Presale"]
     },
-    "The Strategy Pivot (Justification)": {
-        "id": "spotify_text_q3",
+    "Open Reflection": {
+        "id": "q3_text",
         "type": "TEXT",
-        "content": "Explain your 'Hybrid' solution: How do you satisfy both Audiophiles and Families?",
+        "content": "In your own words, how does digital scarcity impact marginal cost?",
         "options": [],
         "correct": None
     }
 }
 
 # ==========================================
-# 2. ANALYSIS FUNCTIONS (The Dispatcher)
+# 2. ANALYSIS DISPATCHER FUNCTIONS
 # ==========================================
 
 def analyze_single(df, config):
     counts = df['option'].value_counts().reindex(config['options'], fill_value=0).reset_index()
     counts.columns = ['Choice', 'Votes']
-    chart_choice = st.radio("Toggle View:", ["Bar", "Pie"], horizontal=True, key=f"chart_{config['id']}")
-    if chart_choice == "Bar":
-        fig = px.bar(counts, x='Votes', y='Choice', orientation='h', color='Choice', text_auto=True)
-    else:
-        fig = px.pie(counts, values='Votes', names='Choice', hole=0.4)
+    fig = px.bar(counts, x='Votes', y='Choice', orientation='h', color='Choice', text_auto=True)
     st.plotly_chart(fig, use_container_width=True)
+    if config['correct']:
+        st.info(f"🎯 **Reference Answer:** {config['correct']}")
 
 def analyze_multi(df, config):
-    st.write("### Exact Combination Match Rate")
+    st.write("### Exact Strategic Combinations")
     combos = df['option'].value_counts().reset_index()
-    combos.columns = ['Combination Chosen', 'Student Count']
+    combos.columns = ['Combination', 'Count']
     st.table(combos)
     if config['correct']:
         target = ", ".join(sorted(config['correct']))
         matches = len(df[df['option'] == target])
-        st.success(f"✅ **Target Combo:** {target} ({matches} students matched)")
+        st.success(f"✅ **Target Strategy:** {target} ({matches} students matched exactly)")
 
 def analyze_text(df, config):
     df['Word Count'] = df['comment'].apply(lambda x: len(str(x).split()))
     df = df.sort_values('Word Count', ascending=False)
-    st.write("### Submissions (Sorted by Effort/CP Marks)")
-    st.dataframe(df[['student_name', 'comment', 'Word Count']], use_container_width=True)
+    st.write("### Class Participation (By Effort)")
+    st.dataframe(df[['pgid', 'comment', 'Word Count']], use_container_width=True)
 
 # ==========================================
-# 3. MAIN APP & VOTING UI
+# 3. APP UI & VOTING LOGIC
 # ==========================================
-st.set_page_config(page_title="Spotify Strategic Engine", layout="wide")
-st.title("🎧 Spotify Music Pro: Strategic Launch Engine")
+st.set_page_config(page_title=f"Lecture Engine: {CURRENT_LECTURE_ID}", layout="wide")
+st.title(f"🎓 {CURRENT_LECTURE_ID}: Interactive Session")
 
-selected_label = st.selectbox("Select Activity:", list(LECTURE_CONTENT.keys()))
+selected_label = st.selectbox("Current Activity:", list(LECTURE_CONTENT.keys()))
 q_cfg = LECTURE_CONTENT[selected_label]
 poll_id = q_cfg['id']
-lock_key = f"voted_{poll_id}"
 
-# State Initialization
+# Lock Logic
+lock_key = f"voted_{CURRENT_LECTURE_ID}_{poll_id}"
 if lock_key not in st.session_state: st.session_state[lock_key] = False
 if 'unlocked' not in st.session_state: st.session_state.unlocked = False
 
-# Voting UI
+# Voting Form
 with st.container(border=True):
     st.subheader(q_cfg['content'])
-    pgid = st.text_input("Enter PGID (Mandatory for CP Marks)", key=f"pgid_{poll_id}")
+    pgid = st.text_input("Enter PGID (Mandatory)", key=f"pgid_{poll_id}")
     
     if q_cfg['type'] == "SINGLE":
-        choice = st.radio("Pick one strategy:", q_cfg['options'], key=f"val_{poll_id}")
-        final_val = choice
+        user_val = st.radio("Select Choice:", q_cfg['options'], key=f"rad_{poll_id}")
     elif q_cfg['type'] == "MULTI":
-        choice = st.multiselect("Select all that apply:", q_cfg['options'], key=f"val_{poll_id}")
-        final_val = ", ".join(sorted(choice))
+        user_val_list = st.multiselect("Select all that apply:", q_cfg['options'], key=f"mul_{poll_id}")
+        user_val = ", ".join(sorted(user_val_list))
     else:
-        final_val = "TEXT_MODE"
+        user_val = "OPEN_TEXT"
 
-    comment = st.text_area("Justification (Mandatory - Min 20 chars)", key=f"comm_{poll_id}")
-    
-    # Validation Logic
-    is_ready = len(pgid.strip()) > 0 and len(comment.strip()) >= 20 and final_val != ""
+    user_comment = st.text_area("Justification (Min 20 chars)", key=f"cmt_{poll_id}")
+
+    # Validation
+    is_ready = len(pgid.strip()) > 0 and len(user_comment.strip()) >= 20 and (user_val != "" and user_val != "[]")
 
     if st.session_state[lock_key]:
-        st.warning("✅ Vote recorded for this activity.")
+        st.warning(f"✅ Response recorded for {CURRENT_LECTURE_ID}.")
     else:
-        if st.button("Submit to Database", type="primary", disabled=not is_ready):
-            payload = {"poll_id": poll_id, "student_name": pgid, "option": final_val, "comment": comment}
+        if st.button("Submit Response", type="primary", disabled=not is_ready):
+            payload = {
+                "lecture_id": CURRENT_LECTURE_ID,
+                "poll_id": poll_id,
+                "pgid": pgid,
+                "option": user_val,
+                "comment": user_comment
+            }
             resp = requests.post(f"{SUPABASE_URL}/rest/v1/votes", headers=headers, json=payload)
             if resp.status_code in [200, 201]:
                 st.session_state[lock_key] = True
-                st.success("Vote cast!")
+                st.success("Successfully submitted!")
                 time.sleep(1); st.rerun()
 
 # ==========================================
-# 4. INSTRUCTOR REVEAL & ANALYSIS
+# 4. INSTRUCTOR PANEL & DATA DISPATCH
 # ==========================================
 st.divider()
 with st.expander("👩‍🏫 Instructor Controls"):
     pwd = st.text_input("Admin Password", type="password")
     if pwd == INSTRUCTOR_PASSWORD:
         c1, c2 = st.columns(2)
-        if c1.button("REVEAL ALL RESULTS", use_container_width=True): st.session_state.unlocked = True
+        if c1.button("REVEAL RESULTS", use_container_width=True): st.session_state.unlocked = True
         if c2.button("HIDE RESULTS", use_container_width=True): st.session_state.unlocked = False
-        if st.button("Reset Current Question Data"):
-            requests.delete(f"{SUPABASE_URL}/rest/v1/votes?poll_id=eq.{poll_id}", headers=headers)
+        
+        if st.button("Clear Data for CURRENT Activity"):
+            requests.delete(f"{SUPABASE_URL}/rest/v1/votes?lecture_id=eq.{CURRENT_LECTURE_ID}&poll_id=eq.{poll_id}", headers=headers)
             st.rerun()
 
 if st.session_state.unlocked:
-    st.divider()
-    resp = requests.get(f"{SUPABASE_URL}/rest/v1/votes?poll_id=eq.{poll_id}&select=*", headers=headers)
+    st.header(f"📊 Live Analysis: {selected_label}")
+    # Fetch only data for the current lecture and current question
+    url = f"{SUPABASE_URL}/rest/v1/votes?lecture_id=eq.{CURRENT_LECTURE_ID}&poll_id=eq.{poll_id}&select=*"
+    resp = requests.get(url, headers=headers)
+    
     if resp.status_code == 200 and resp.json():
         df = pd.DataFrame(resp.json())
         
-        # CSV Download for Students
+        # Download Link
         csv = df.to_csv(index=False).encode('utf-8')
-        st.download_button("📥 Download Results (CSV)", data=csv, file_name=f"{poll_id}_results.csv")
+        st.download_button("📥 Download Activity Data (CSV)", data=csv, file_name=f"{CURRENT_LECTURE_ID}_{poll_id}.csv")
         
-        # DISPATCHER
+        # DISPATCH TO SPECIFIC ANALYSIS FUNCTION
         if q_cfg['type'] == "SINGLE": analyze_single(df, q_cfg)
         elif q_cfg['type'] == "MULTI": analyze_multi(df, q_cfg)
         elif q_cfg['type'] == "TEXT": analyze_text(df, q_cfg)
     else:
-        st.info("Awaiting submissions for this specific question...")
+        st.info("No submissions found for this lecture/activity combo.")
