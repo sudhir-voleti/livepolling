@@ -48,26 +48,28 @@ LECTURE_DATA = {
 # ==========================================
 # 2. HELPER FUNCTIONS
 # ==========================================
-def get_submissions(poll_id):
+def get_votes(poll_id):
+    """Fetch results from the 'votes' table only"""
     params = {"poll_id": f"eq.{poll_id}", "select": "*"}
     try:
-        # Fixed: Ensuring we fetch from 'votes' to match 'post' table [cite: 7, 10, 12]
+        # MANDATORY FIX: Updated from 'submissions' to 'votes'
         r = requests.get(f"{SUPABASE_URL}/rest/v1/votes", headers=headers, params=params)
         return pd.DataFrame(r.json())
-    except:
+    except Exception as e:
         return pd.DataFrame()
 
 # ==========================================
-# 3. GLOBAL NAVIGATION & SELECTOR
+# 3. GLOBAL NAVIGATION
 # ==========================================
 st.set_page_config(page_title="Lec02 Strategic Verdict", layout="wide")
+
+# Persistent State Management
+if 'unlocked' not in st.session_state:
+    st.session_state.unlocked = False
 
 page = st.sidebar.radio("Navigation", ["Student Voting", "Instructor Dashboard"])
 selected_act_name = st.sidebar.selectbox("Current Discussion Question:", list(LECTURE_DATA.keys()))
 current_act = LECTURE_DATA[selected_act_name]
-
-if 'unlocked' not in st.session_state:
-    st.session_state.unlocked = False
 
 # ==========================================
 # 4. STUDENT VOTING PAGE
@@ -77,7 +79,6 @@ if page == "Student Voting":
     st.subheader(selected_act_name)
     st.info(current_act["content"])
     
-    # Guardrail: Check session state
     if f"voted_{current_act['id']}" not in st.session_state:
         with st.form(key=f"form_{current_act['id']}"):
             name = st.text_input("Student Name / ID:")
@@ -91,7 +92,6 @@ if page == "Student Voting":
             submit = st.form_submit_button("Submit Verdict")
             
             if submit:
-                # Mandatory fields & word count logic [cite: 9]
                 word_count = len(comment.strip().split())
                 if name and vote and word_count >= 5:
                     payload = {
@@ -100,24 +100,25 @@ if page == "Student Voting":
                         "comment": comment, 
                         "student_name": name
                     }
+                    # MANDATORY FIX: Sending to 'votes'
                     requests.post(f"{SUPABASE_URL}/rest/v1/votes", headers=headers, json=payload)
                     st.session_state[f"voted_{current_act['id']}"] = True
-                    st.success("Verdict recorded. Grounded evidence leads to better strategy!")
+                    st.success("Verdict recorded. Strategy requires precision!")
                     st.rerun()
                 else:
-                    st.error("🚨 All fields are mandatory. Identification and a 5-word justification are required.")
+                    st.error("🚨 All fields required. Provide Name and a 5-word justification.")
     else:
-        st.success("You have already submitted your response for this activity.")
+        st.success("Submission received for this activity.")
 
 # ==========================================
-# 5. INSTRUCTOR DASHBOARD PAGE
+# 5. INSTRUCTOR DASHBOARD
 # ==========================================
 elif page == "Instructor Dashboard":
     st.title("Executive Dashboard")
     pwd = st.sidebar.text_input("Admin Password", type="password")
     
     if pwd == INSTRUCTOR_PASSWORD:
-        st.header(f"Boardroom Results: {selected_act_name}")
+        st.header(f"Live Boardroom Data: {selected_act_name}")
         
         colA, colB = st.columns(2)
         with colA:
@@ -128,43 +129,29 @@ elif page == "Instructor Dashboard":
                 st.session_state.unlocked = False
 
         if st.session_state.unlocked:
-            df = get_submissions(current_act['id'])
+            # Call the helper function that uses the 'votes' table
+            df = get_votes(current_act['id'])
             
             if not df.empty:
-                col_metric, col_chart = st.columns([1, 3])
-                with col_metric:
-                    st.metric("Total Submissions", len(df))
-                    
-                    # CSV Download functionality [cite: 14, 16]
+                col_m, col_c = st.columns([1, 3])
+                with col_m:
+                    st.metric("Submissions", len(df))
                     csv = df.to_csv(index=False).encode('utf-8')
-                    st.download_button(
-                        label="Download CSV",
-                        data=csv,
-                        file_name=f"Lec02_Verdict_{current_act['id']}.csv",
-                        mime="text/csv",
-                    )
+                    st.download_button("Download CSV", data=csv, file_name=f"Lec02_{current_act['id']}.csv")
                 
-                with col_chart:
-                    # Logic for Free Text vs Charts [cite: 17, 18, 19]
+                with col_c:
                     if current_act['options'] == ["Free Text Entry"]:
-                        st.write("### The Deal-Breakers (Raw Inputs):")
-                        words = ", ".join(df['option'].dropna().astype(str).tolist())
-                        st.info(words)
+                        st.write("### The Deal-Breakers:")
+                        st.info(", ".join(df['option'].dropna().astype(str).tolist()))
                     else:
                         counts = df['option'].value_counts().reset_index()
                         counts.columns = ['Option', 'Votes']
-                        
-                        chart_choice = st.radio("Chart Type:", ["Bar", "Pie"], horizontal=True)
-                        if chart_choice == "Bar":
-                            fig = px.bar(counts, x='Votes', y='Option', orientation='h', color='Option', text_auto=True)
-                        else:
-                            fig = px.pie(counts, values='Votes', names='Option', hole=0.4)
+                        c_type = st.radio("Chart:", ["Bar", "Pie"], horizontal=True)
+                        fig = px.bar(counts, x='Votes', y='Option', orientation='h', color='Option') if c_type == "Bar" else px.pie(counts, values='Votes', names='Option', hole=0.4)
                         st.plotly_chart(fig, use_container_width=True)
                 
-                # CP Tracking Table [cite: 13, 20]
-                with st.expander("Detailed Participant Commentary"):
-                    st.dataframe(df[['student_name', 'option', 'comment']].dropna(subset=['comment']), use_container_width=True)
+                st.dataframe(df[['student_name', 'option', 'comment']], use_container_width=True)
             else:
                 st.info("Awaiting taskforce inputs...")
     else:
-        st.warning("Please enter the administrator password in the sidebar.")
+        st.warning("Enter administrator password in the sidebar.")
