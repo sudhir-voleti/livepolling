@@ -130,7 +130,7 @@ elif page == "Instructor Dashboard":
 
         if st.session_state.unlocked:
             # Call the helper function that uses the 'votes' table
-            df = get_votes(current_act['id'])
+            df = get_submissions(current_act['id'])
             
             if not df.empty:
                 col_m, col_c = st.columns([1, 3])
