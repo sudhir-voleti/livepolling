@@ -62,6 +62,14 @@ def post_submission(student_name, poll_id, option, comment):
     return requests.post(f"{SUPABASE_URL}/rest/v1/submissions", headers=headers, json=data)
 
 # ==========================================
+# 2. GLOBAL NAVIGATION & SELECTOR
+# ==========================================
+# Move these to the very top so both pages can see them
+page = st.sidebar.radio("Navigation", ["Student Voting", "Instructor Dashboard"])
+selected_act_name = st.sidebar.selectbox("Current Discussion Question:", list(LECTURE_DATA.keys()))
+current_act = LECTURE_DATA[selected_act_name]
+
+# ==========================================
 # 3. NAVIGATION (Place this before the UI)
 # ==========================================
 page = st.sidebar.radio("Navigation", ["Student Voting", "Instructor Dashboard"])
@@ -70,7 +78,8 @@ page = st.sidebar.radio("Navigation", ["Student Voting", "Instructor Dashboard"]
 # 4. STUDENT VOTING PAGE
 # ==========================================
 if page == "Student Voting":
-    st.subheader(selected_act_name)
+    st.title("Student War Room")
+    st.subheader(selected_act_name) # This will no longer throw an error
     st.info(current_act["content"])
     
     with st.form(key=f"form_{current_act['id']}"):
@@ -93,6 +102,7 @@ if page == "Student Voting":
 # 5. INSTRUCTOR DASHBOARD PAGE (Explicit IF)
 # ==========================================
 elif page == "Instructor Dashboard":
+    st.title("Executive Dashboard")
     pwd = st.sidebar.text_input("Admin Password", type="password")
     
     if pwd == INSTRUCTOR_PASSWORD:
