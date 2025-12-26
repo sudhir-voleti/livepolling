@@ -48,14 +48,14 @@ LECTURE_DATA = {
 # ==========================================
 # 2. HELPER FUNCTIONS
 # ==========================================
-def get_votes(poll_id):
-    """Fetch results from the 'votes' table only"""
+def get_submissions(poll_id):
+    headers = {"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}"}
     params = {"poll_id": f"eq.{poll_id}", "select": "*"}
     try:
-        # MANDATORY FIX: Updated from 'submissions' to 'votes'
+        # MANDATORY CHANGE: Changed 'submissions' to 'votes'
         r = requests.get(f"{SUPABASE_URL}/rest/v1/votes", headers=headers, params=params)
         return pd.DataFrame(r.json())
-    except Exception as e:
+    except:
         return pd.DataFrame()
 
 # ==========================================
