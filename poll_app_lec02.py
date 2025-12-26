@@ -62,89 +62,63 @@ def post_submission(student_name, poll_id, option, comment):
     return requests.post(f"{SUPABASE_URL}/rest/v1/submissions", headers=headers, json=data)
 
 # ==========================================
-# 3. UI LOGIC
+# 3. NAVIGATION (Place this before the UI)
 # ==========================================
-st.set_page_config(page_title="Lec02 Strategic Verdict", layout="wide")
-st.title("Lec02: Grounded Audits & Persona Labs")
+page = st.sidebar.radio("Navigation", ["Student Voting", "Instructor Dashboard"])
 
-# Sidebar
-page = st.sidebar.radio("View", ["Student Voting", "Instructor Dashboard"])
-selected_q_name = st.sidebar.selectbox("Active Poll:", list(LECTURE_DATA.keys()))
-current_act = LECTURE_DATA[selected_q_name]
-
+# ==========================================
+# 4. STUDENT VOTING PAGE
+# ==========================================
 if page == "Student Voting":
-    st.subheader(selected_q_name)
-    st.info(current_act['content'])
-
-# Guardrail: Check session state to prevent double-voting
-    if f"voted_{current_act['id']}" not in st.session_state:
-        with st.form(key=f"form_{current_act['id']}"):
-            name = st.text_input("Student Name / ID:")
-            
-            if current_act['options'] == ["Free Text Entry"]:
-                vote = st.text_input("Enter your word/response:")
+    st.subheader(selected_act_name)
+    st.info(current_act["content"])
+    
+    with st.form(key=f"form_{current_act['id']}"):
+        choice = st.radio("Select your strategic choice:", current_act["options"])
+        moniker = st.text_input("Name / Group Number")
+        comment = st.text_area("Justification (Mandatory - min 5 words):")
+        submit = st.form_submit_button("Submit Vote")
+        
+        if submit:
+            word_count = len(comment.strip().split())
+            if moniker and word_count >= 5:
+                payload = {"poll_id": current_act["id"], "option": choice, "comment": comment, "student_name": moniker}
+                requests.post(f"{SUPABASE_URL}/rest/v1/votes", headers=headers, json=payload)
+                st.success("Vote recorded.")
+                st.rerun()
             else:
-                vote = st.radio("Select your answer:", current_act['options'])
-            
-            # Note: Justification is now strictly mandatory
-            comment = st.text_area("Justification / Evidence (Mandatory - min. 5 words):")
-            submit = st.form_submit_button("Submit Verdict")
-            
-            if submit:
-                # Validation Logic
-                word_count = len(comment.strip().split()) if comment else 0
-                
-                if not name:
-                    st.error("🚨 Identification is required. Please enter your Name / ID.")
-                elif not vote or (current_act['options'] == ["Free Text Entry"] and not vote.strip()):
-                    st.error("🚨 A selection or response is required.")
-                elif not comment or word_count < 5:
-                    st.error(f"🚨 Justification is mandatory and must be at least 5 words long. (Current: {word_count} words)")
-                else:
-                    # All mandatory conditions met
-                    post_submission(name, current_act['id'], vote, comment)
-                    st.session_state[f"voted_{current_act['id']}"] = True
-                    st.success("✅ Verdict recorded. Grounded evidence leads to better strategy!")
-                    st.rerun()
-    else:
-        st.success("You have already submitted your response for this poll.")
-        
-else:
-    # INSTRUCTOR DASHBOARD
-    pw = st.sidebar.text_input("Instructor Password:", type="password")
-    if pw == INSTRUCTOR_PASSWORD:
-        st.header(f"Live Insights: {selected_q_name}")
-        df = get_submissions(current_act['id'])
-        
-        if not df.empty:
-            col1, col2 = st.columns([1, 3])
-            with col1:
-                st.metric("Submissions", len(df))
-                # Restore CSV Download Feature
-                csv = df.to_csv(index=False).encode('utf-8')
-                st.download_button("Download Data (CSV)", data=csv, file_name=f"{current_act['id']}_results.csv")
-            
-            with col2:
-                if current_act['options'] != ["Free Text Entry"]:
-                    counts = df['option'].value_counts().reset_index()
-                    counts.columns = ['Option', 'Votes']
-                    chart_type = st.radio("Chart:", ["Bar", "Pie"], horizontal=True)
-                    if chart_type == "Bar":
-                        fig = px.bar(counts, x='Votes', y='Option', orientation='h', color='Option')
-                    else:
-                        fig = px.pie(counts, values='Votes', names='Option', hole=0.4)
-                    st.plotly_chart(fig, use_container_width=True)
-                else:
-                    st.write("Word Submissions:")
-                    st.info(", ".join(df['option'].tolist()))
-            
-            with st.expander("Participant Commentary"):
-                st.dataframe(df[['student_name', 'option', 'comment']].dropna(subset=['comment']))
-        else:
-            st.info("Awaiting taskforce inputs...")
-    else:
-        st.warning("Enter instructor password to access boardroom data.")
+                st.error("Identification and a 5-word justification are required.")
 
+# ==========================================
+# 5. INSTRUCTOR DASHBOARD PAGE (Explicit IF)
+# ==========================================
+elif page == "Instructor Dashboard":
+    pwd = st.sidebar.text_input("Admin Password", type="password")
+    
+    if pwd == INSTRUCTOR_PASSWORD:
+        st.header(f"Boardroom Results: {selected_act_name}")
+        
+        colA, colB = st.columns(2)
+        with colA:
+            if st.button("REVEAL RESULTS"): st.session_state.unlocked = True
+        with colB:
+            if st.button("HIDE RESULTS"): st.session_state.unlocked = False
+
+        if st.session_state.get('unlocked'):
+            # Fetch and Render Results
+            resp = requests.get(f"{SUPABASE_URL}/rest/v1/votes?poll_id=eq.{current_act['id']}&select=*", headers=headers)
+            if resp.status_code == 200 and resp.json():
+                df = pd.DataFrame(resp.json())
+                
+                # Show Chart and Data
+                fig = px.bar(df['option'].value_counts().reset_index(), x='count', y='option', orientation='h')
+                st.plotly_chart(fig, use_container_width=True)
+                st.dataframe(df[['student_name', 'option', 'comment']])
+            else:
+                st.info("Awaiting taskforce inputs...")
+    else:
+        st.warning("Please enter the administrator password in the sidebar.")
+        
   # ==========================================
 # 6. RENDER RESULTS & CSV DOWNLOAD
 # ==========================================
