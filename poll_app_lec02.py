@@ -76,7 +76,7 @@ if page == "Student Voting":
     st.subheader(selected_q_name)
     st.info(current_act['content'])
 
-    # Guardrail: Check session state
+# Guardrail: Check session state to prevent double-voting
     if f"voted_{current_act['id']}" not in st.session_state:
         with st.form(key=f"form_{current_act['id']}"):
             name = st.text_input("Student Name / ID:")
@@ -86,20 +86,29 @@ if page == "Student Voting":
             else:
                 vote = st.radio("Select your answer:", current_act['options'])
             
-            comment = st.text_area("Justification / Evidence (Optional):")
+            # Note: Justification is now strictly mandatory
+            comment = st.text_area("Justification / Evidence (Mandatory - min. 5 words):")
             submit = st.form_submit_button("Submit Verdict")
             
             if submit:
-                if name and vote:
+                # Validation Logic
+                word_count = len(comment.strip().split()) if comment else 0
+                
+                if not name:
+                    st.error("🚨 Identification is required. Please enter your Name / ID.")
+                elif not vote or (current_act['options'] == ["Free Text Entry"] and not vote.strip()):
+                    st.error("🚨 A selection or response is required.")
+                elif not comment or word_count < 5:
+                    st.error(f"🚨 Justification is mandatory and must be at least 5 words long. (Current: {word_count} words)")
+                else:
+                    # All mandatory conditions met
                     post_submission(name, current_act['id'], vote, comment)
                     st.session_state[f"voted_{current_act['id']}"] = True
-                    st.success("Verdict recorded. Refined thinking leads to better strategy!")
+                    st.success("✅ Verdict recorded. Grounded evidence leads to better strategy!")
                     st.rerun()
-                else:
-                    st.warning("Please provide both Name and a Selection.")
     else:
         st.success("You have already submitted your response for this poll.")
-
+        
 else:
     # INSTRUCTOR DASHBOARD
     pw = st.sidebar.text_input("Instructor Password:", type="password")
